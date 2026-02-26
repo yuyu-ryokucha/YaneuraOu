@@ -4,23 +4,12 @@
   var quit = false;
   var listeners = [];
 
-  var oldPrint = Module["print"];
   Module["print"] = function (line) {
-    if (Module["ENVIRONMENT_IS_PTHREAD"]) {
-      if (oldPrint) oldPrint(line);
-      else console.log(line);
-      return;
-    }
-
-    if (listeners.length === 0) {
-      if (typeof postMessage === 'function') {
-        postMessage({ type: 'stdout', text: line });
-      } else {
-        console.log(line);
-      }
-    } else {
-      for (var i = 0; i < listeners.length; i++) listeners[i](line);
-    }
+    if (listeners.length === 0) console.log(line);
+    else
+      setTimeout(function () {
+        for (var i = 0; i < listeners.length; i++) listeners[i](line);
+      });
   };
 
   Module["addMessageListener"] = function (listener) {
