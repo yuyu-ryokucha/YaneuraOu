@@ -2,6 +2,7 @@
 name: Make CI (for WebAssembly)
 
 on:
+  workflow_dispatch:
   push:
     branches:
       - "**"
