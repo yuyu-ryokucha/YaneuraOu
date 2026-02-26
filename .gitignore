@@ -249,5 +249,6 @@ GeneratedArtifacts/
 _Pvt_Extensions/
 ModelManifest.xml
 
-*/build*/*
+build*/**
 .DS_Store
+notes/**
