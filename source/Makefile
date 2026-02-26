@@ -203,13 +203,13 @@ else
 		LDFLAGS += -s MODULARIZE=1 -s EXPORT_NAME="$(EM_EXPORT_NAME)" -s ENVIRONMENT=web,worker,node
 		LDFLAGS += -s PTHREAD_POOL_SIZE=32
 		# -s PTHREAD_POOL_SIZE_STRICT=32
-		LDFLAGS += -s FILESYSTEM=1 -s EXIT_RUNTIME=0 -s "EXPORTED_RUNTIME_METHODS=['FS','ccall']"
+		LDFLAGS += -s WASMFS=1 -s FORCE_FILESYSTEM=1 -s EXIT_RUNTIME=0 -s "EXPORTED_RUNTIME_METHODS=['FS','ccall']"
 		LDFLAGS += -s ALLOW_MEMORY_GROWTH=1 -s INITIAL_MEMORY=$(EM_INITIAL_MEMORY_SIZE) -s MAXIMUM_MEMORY=4294967296
 		LDFLAGS += -s STACK_SIZE=67108864
 		# LDFLAGS += -s PROXY_TO_PTHREAD
 		# LDFLAGS += -s ALLOW_UNIMPLEMENTED_SYSCALLS
 		# LDFLAGS += -s ASSERTIONS
-		LDFLAGS += -s --closure 1
+		# LDFLAGS += -s --closure 1
 	endif
 endif
 
@@ -230,7 +230,11 @@ endif
 # リンク時最適化。
 # CPPFLAGSとLDFLAGSの両方で-fltoを指定する必要がある。
 # cf. https://gcc.gnu.org/onlinedocs/gcc-6.3.0/gcc/Optimize-Options.html#Optimize-Options
-LTOFLAGS = -flto
+ifeq (,$(findstring em++,$(COMPILER)))
+	LTOFLAGS = -flto
+else
+	LTOFLAGS = 
+endif
 
 # MSYS2 clang++ で -flto 指定時にリンクを行えない問題の回避
 ifneq (,$(findstring clang++,$(COMPILER)))
@@ -315,6 +319,7 @@ endif
 #SOURCES  = $(wildcard *.cpp)
 SOURCES  = \
 	main.cpp                                                                   \
+	wasm_opfs.cpp                                                              \
 	types.cpp                                                                  \
 	bitboard.cpp                                                               \
 	misc.cpp                                                                   \
@@ -661,7 +666,7 @@ evallearn:
 
 # トーナメント用
 tournament:
-	$(MAKE) CPPFLAGS='$(CPPFLAGS) $(LTOFLAGS) -DFOR_TOURNAMENT' LDFLAGS='$(LDFLAGS) $(LTOFLAGS)' $(TARGET)
+	$(MAKE) CPPFLAGS='$(CPPFLAGS) $(LTOFLAGS)' LDFLAGS='$(LDFLAGS) $(LTOFLAGS)' $(TARGET)
 
 #　とりあえずPGOはAVX2とSSE4.2専用
 prof:
