@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstddef>
 #include <cstring>
 #include <fstream>
 #include <limits>
@@ -83,6 +84,19 @@ void add_options_(OptionsMap& options, ThreadPool& threads) {
                     return std::nullopt;
                 }));
 
+#if defined(__EMSCRIPTEN__)
+    // 📝 wasmでは評価関数ファイル名をJS側から指定できるようにする。
+    //     JS側はEmscriptenの仮想FSにファイルを書き出したあと、
+    //     "setoption name EvalFile value ..."を送ってくる。
+    // ⚠ load_eval()はwasmのとき、EvalDirが"<internal>"でもOptions["EvalFile"]を
+    //     参照するので、埋め込み版でもこのOptionは必要。
+    Options.add("EvalFile", Option(EvalFileDefaultName, [](const Option&) {
+                    // 評価関数ファイル名の変更に際して、読み込みフラグをクリアする。
+                    eval_loaded = false;
+                    return std::nullopt;
+                }));
+#endif
+
     // NNUEのFV_SCALEの値
     Options.add("FV_SCALE", Option(16, 1, 128, [&](const Option& o) {
                     YaneuraOu::Eval::NNUE::FV_SCALE = int(o);
@@ -109,7 +123,16 @@ void add_options_(OptionsMap& options, ThreadPool& threads) {
 //     const unsigned int         gEmbeddedNNUESize;    // 埋め込まれたファイルのサイズ
 // なお、この方法は Microsoft Visual Studio では動作しません。
 
-#if !defined(_MSC_VER) && !defined(NNUE_EMBEDDING_OFF)
+#if defined(__EMSCRIPTEN__) && !defined(NNUE_EMBEDDING_OFF)
+// 📝 WebAssemblyではincbin.hは使えない。incbin.hはモジュールレベルのinline asmで
+//     データシンボルを置くが、wasmはデータシンボルをtextセクションに置けないため
+//     "data symbols must live in a data section"となる。-fltoではアセンブルが
+//     リンク時まで遅延されるので、コンパイルは通りwasm-ldがSIGABRTで落ちる。
+//     代わりに、パラメーターを文字列リテラルとして持つembedded_nnue.cpp
+//     (script/wasm_build.jsが生成)をリンクする。
+extern const char*       gEmbeddedNNUEData;
+extern const std::size_t gEmbeddedNNUESize;
+#elif !defined(_MSC_VER) && !defined(NNUE_EMBEDDING_OFF)
 INCBIN(EmbeddedNNUE, EvalFileDefaultName);
 #else
 const unsigned char        gEmbeddedNNUEData[1] = { 0x0 };
@@ -144,7 +167,14 @@ namespace {
 	// ⇨  StockfishはNNUEとして大きなnetworkと小さなnetworkがある。
 
 	EmbeddedNNUE get_embedded() {
+#if defined(__EMSCRIPTEN__) && !defined(NNUE_EMBEDDING_OFF)
+		// embedded_nnue.cppは先頭ポインタとサイズしか提供しないので、終端はここで計算する。
+		const auto* data = reinterpret_cast<const unsigned char*>(gEmbeddedNNUEData);
+		return EmbeddedNNUE(data, data + gEmbeddedNNUESize,
+			static_cast<unsigned int>(gEmbeddedNNUESize));
+#else
 		return EmbeddedNNUE(gEmbeddedNNUEData, gEmbeddedNNUEEnd, gEmbeddedNNUESize);
+#endif
 	}
 }
 
@@ -870,7 +900,14 @@ void load_eval() {
     #endif
         const Tools::Result result = [&] {
             if (dir_name != "<internal>") {
+            #if !defined(__EMSCRIPTEN__)
                 auto abs_eval_path = Path::Combine(Directory::GetBinaryFolder(), dir_name);
+            #else
+                // 📝 wasmでは評価関数ファイルはEmscriptenの仮想FS上にある。
+                //     Directory::GetBinaryFolder()はホスト側のパスを返すので前置せず、
+                //     EvalDirをそのまま仮想FS上のパスとして扱う。
+                auto abs_eval_path = dir_name;
+            #endif
                 const std::string file_path = Path::Combine(abs_eval_path, file_name);
                 std::ifstream stream(file_path, std::ios::binary);
                 sync_cout << "info string loading eval file : " << file_path << sync_endl;
